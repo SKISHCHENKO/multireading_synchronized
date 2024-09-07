@@ -2,30 +2,34 @@ package multithreading;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.BiConsumer;
 
 public class Main {
     public static final Map<Integer, Integer> sizeToFreq = new HashMap<>();
+    private static final Object lock = new Object();
+    private static volatile boolean finished = false;
 
-    public static void main(String[] args)  {
+    public static void main(String[] args) throws InterruptedException {
         int maxThreads = 1000;
         ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
-        Callable<Void> task = createTask();
 
+        // Submit counting tasks
         for (int i = 0; i < maxThreads; i++) {
-            executor.submit(task);
+            executor.submit(createTask());
         }
+
+        // Submit printer thread
+        new Thread(new PrinterThread((key, value) -> System.out.println("Самое частое количество повторений " + key + " (встретилось " + value + " раз)"))).start();
+        new Thread(new PrinterThread((key, value) -> System.out.println("Лидер: " + key + " (встретилось " + value + " раз)"))).start();
+
         executor.shutdown();
-        int globalMax = 0;
-        int key = 0;
-        System.out.println("Другие размеры:");
-        for (Map.Entry<Integer, Integer> entry : sizeToFreq.entrySet()) {
-            System.out.println("- " + entry.getKey() + "(" + entry.getValue()+" раз)");
-            if(entry.getValue() > globalMax){
-                globalMax = entry.getValue();
-                key = entry.getKey();
-            }
+        executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+
+        // Signal printer threads to finish
+        synchronized (lock) {
+            finished = true;
+            lock.notifyAll();
         }
-        System.out.println("Самое частое количество повторений " + key + " (встретилось " + globalMax + "раз)");
     }
 
     private static Callable<Void> createTask() {
@@ -51,9 +55,12 @@ public class Main {
                     }
                 }
             }
-            synchronized (sizeToFreq) {
+
+            synchronized (lock) {
                 sizeToFreq.put(count, maxSize);
+                lock.notifyAll();
             }
+
             return null;
         };
     }
@@ -65,5 +72,58 @@ public class Main {
             text.append(letters.charAt(random.nextInt(letters.length())));
         }
         return text.toString();
+    }
+
+    private static class PrinterThread implements Runnable {
+        private final BiConsumer<Integer, Integer> printAction;
+        private int globalMax;
+        private int key;
+        private int leaderKey;
+        private int leaderValue;
+
+        public PrinterThread(BiConsumer<Integer, Integer> printAction) {
+            this.printAction = printAction;
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                synchronized (lock) {
+                    if (sizeToFreq.isEmpty() && !finished) {
+                        try {
+                            lock.wait();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    } else {
+                        if (finished) {
+                            return;
+                        }
+                        
+                        lock.notifyAll();
+
+                        globalMax = 0;
+                        key = 0;
+                        leaderKey = 0;
+                        leaderValue = 0;
+
+                        for (Map.Entry<Integer, Integer> entry : sizeToFreq.entrySet()) {
+                            if (entry.getValue() > globalMax) {
+                                globalMax = entry.getValue();
+                                key = entry.getKey();
+                            }
+                            if (entry.getValue() >= leaderValue) {
+                                leaderValue = entry.getValue();
+                                leaderKey = entry.getKey();
+                            }
+                        }
+                    }
+                }
+
+                printAction.accept(key, globalMax);
+                printAction.accept(leaderKey, leaderValue);
+            }
+        }
     }
 }
