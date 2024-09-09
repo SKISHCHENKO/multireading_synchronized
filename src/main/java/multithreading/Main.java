@@ -4,7 +4,6 @@ import java.util.*;
 
 public class Main {
     public static final Map<Integer, Integer> sizeToFreq = new HashMap<>();
-    private static final Object lock = new Object();
     private static int completedThreads = 0;
     private static final int TOTAL_THREADS = 1000;
 
@@ -18,10 +17,10 @@ public class Main {
                         .filter(c -> c == 'R')
                         .count();
 
-                synchronized (lock) {
+                synchronized (sizeToFreq) {
                     sizeToFreq.put(countR, sizeToFreq.getOrDefault(countR, 0) + 1);
                     completedThreads++;
-                    lock.notify();
+                    sizeToFreq.notify();
                 }
             };
 
@@ -33,9 +32,9 @@ public class Main {
         Runnable printer = () -> {
             try {
                 while (!Thread.currentThread().isInterrupted()) {
-                    synchronized (lock) {
+                    synchronized (sizeToFreq) {
                         while (completedThreads < TOTAL_THREADS) {
-                            lock.wait(); // Ожидание сигнала о завершении потока
+                            sizeToFreq.wait(); // Ожидание сигнала о завершении потока
                         }
                         int globalMax = 0;
                         int key = 0;
