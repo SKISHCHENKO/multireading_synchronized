@@ -4,38 +4,15 @@ import java.util.*;
 
 public class Main {
     public static final Map<Integer, Integer> sizeToFreq = new HashMap<>();
-    private static int completedThreads = 0;
-    private static final int TOTAL_THREADS = 1000;
 
     public static void main(String[] args) throws InterruptedException {
         List<Thread> threads = new ArrayList<>();
-
-        for (int i = 0; i < TOTAL_THREADS; i++) {
-            Runnable logic = () -> {
-                String text = generateText("RLRFR", 100);
-                int countR = (int) text.chars()
-                        .filter(c -> c == 'R')
-                        .count();
-
-                synchronized (sizeToFreq) {
-                    sizeToFreq.put(countR, sizeToFreq.getOrDefault(countR, 0) + 1);
-                    completedThreads++;
-                    sizeToFreq.notify();
-                }
-            };
-
-            Thread thread = new Thread(logic);
-            threads.add(thread);
-            thread.start();
-        }
 
         Runnable printer = () -> {
             try {
                 while (!Thread.currentThread().isInterrupted()) {
                     synchronized (sizeToFreq) {
-                        while (completedThreads < TOTAL_THREADS) {
-                            sizeToFreq.wait(); // Ожидание сигнала о завершении потока
-                        }
+                        sizeToFreq.wait(); // Ожидание сигнала о завершении потока
                         int globalMax = 0;
                         int key = 0;
                         System.out.println("Другие размеры:");
@@ -49,7 +26,6 @@ public class Main {
                             }
                         }
                         System.out.println("Самое частое количество повторений " + key + " (встретилось " + globalMax + " раз)");
-                        completedThreads = 0;
                     }
                 }
             } catch (InterruptedException e) {
@@ -60,10 +36,28 @@ public class Main {
         Thread threadPrinter = new Thread(printer);
         threadPrinter.start();
 
+        int maxThreads = 1000;
+        for (int i = 0; i < maxThreads; i++) {
+            Runnable logic = () -> {
+                String text = generateText("RLRFR", 100);
+                int countR = (int) text.chars()
+                        .filter(c -> c == 'R')
+                        .count();
+
+                synchronized (sizeToFreq) {
+                    sizeToFreq.put(countR, sizeToFreq.getOrDefault(countR, 0) + 1);
+                    sizeToFreq.notify();
+                }
+            };
+
+            Thread thread = new Thread(logic);
+            threads.add(thread);
+            thread.start();
+        }
+
         for (Thread thread : threads) {
             thread.join();
         }
-
         threadPrinter.interrupt();
         threadPrinter.join();
     }
