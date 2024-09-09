@@ -24,7 +24,7 @@ public class Main {
             thread.start();
         }
         for (Thread thread : threads) {
-            thread.join(); // зависаем, ждём когда поток объект которого лежит в thread завершится
+            thread.join(); 
         }
 
         int globalMax = 0;
